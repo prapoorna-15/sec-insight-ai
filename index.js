@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
-import { createClient } from '@supabase/supabase-js'; // Or '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -79,8 +79,8 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
     // Chunk text
     const textChunks = chunkText(fullText);
 
-    // Get embedding model
-    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    // Get embedding model (gemini-embedding-001 outputs 3072 dimensions)
+    const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
 
     // Generate embeddings & store in Supabase
     for (const chunk of textChunks) {
@@ -121,8 +121,8 @@ app.post('/query', async (req, res) => {
       return res.status(400).json({ error: 'Both "query" and "sessionId" are required.' });
     }
 
-    // Generate embedding for user query
-    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    // Generate embedding for user query (3072 dimensions)
+    const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
     const queryEmbedResult = await embeddingModel.embedContent(query);
     const queryEmbedding = queryEmbedResult.embedding.values;
 
@@ -144,7 +144,7 @@ app.post('/query', async (req, res) => {
       ? matchedDocs.map(doc => doc.content).join('\n---\n')
       : 'No relevant context found in uploaded documents.';
 
-    // Primary Gemini generation model with fallback
+    // Generation model execution with fallback
     let modelName = 'gemini-2.5-flash';
     let model;
 
