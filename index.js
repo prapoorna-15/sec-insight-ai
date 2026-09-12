@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
-import { createClient } from '@supabase/supabase-sandbox-js'; // Or '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'; // Or '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import path from 'path';
