@@ -18,8 +18,6 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-
-// Serve static frontend files from root directory
 app.use(express.static(__dirname));
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -70,7 +68,9 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
     }
 
     const textChunks = chunkText(fullText);
-    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+
+    // FIXED: Added "models/" prefix
+    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
 
     for (const chunk of textChunks) {
       const result = await embeddingModel.embedContent(chunk);
@@ -114,7 +114,8 @@ app.post('/query', async (req, res) => {
       return res.status(400).json({ error: 'Query parameter is required.' });
     }
 
-    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    // FIXED: Added "models/" prefix
+    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
     const queryEmbedResult = await embeddingModel.embedContent(query);
     const queryEmbedding = queryEmbedResult.embedding.values;
 
@@ -134,12 +135,12 @@ app.post('/query', async (req, res) => {
       ? matchedDocs.map(doc => doc.content).join('\n---\n')
       : 'No relevant context found in documents.';
 
-    // Updated Gemini Model (gemini-1.5-flash)
+    // FIXED: Added "models/" prefix
     let model;
     try {
-      model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
     } catch {
-      model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-pro' });
     }
 
     const prompt = `You are SEC-Insight AI, an expert assistant for financial filings and document analysis.
