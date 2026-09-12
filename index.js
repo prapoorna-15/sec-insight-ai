@@ -1,9 +1,8 @@
 import express from 'express';
-import cors from 'cors';
 import multer from 'multer';
-import { PDFParse } from 'pdf-parse';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PDFParse } from 'pdf-parse';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,156 +13,130 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(__dirname));
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_SEC_INSIGHT);
 const upload = multer({ storage: multer.memoryStorage() });
 
-function chunkText(text, chunkSize = 1000, overlap = 200) {
+// Initialize Supabase & Gemini using environment variables
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Simple text splitter function
+function splitTextIntoChunks(text, chunkSize = 1000, overlap = 200) {
   const chunks = [];
-  let index = 0;
-  while (index < text.length) {
-    const chunk = text.slice(index, index + chunkSize);
-    chunks.push(chunk);
-    index += chunkSize - overlap;
+  let start = 0;
+  while (start < text.length) {
+    const end = start + chunkSize;
+    chunks.push(text.slice(start, end));
+    start += chunkSize - overlap;
   }
   return chunks;
 }
 
-// Serve Main UI
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Health Check Endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'SEC-Insight AI RAG API is live 🚀' });
-});
-
-// Sync / Upload & Index Endpoint
-app.post('/upload-and-index', upload.single('document'), async (req, res) => {
-  let parser = null;
+// 1. Upload & Vectorize PDF Route
+app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    const sessionId = req.body.sessionId || 'default-session';
     const file = req.file;
-
     if (!file) {
-      return res.status(400).json({ error: 'No PDF file provided.' });
+      return res.status(400).json({ error: 'No file uploaded.' });
     }
 
-    parser = new PDFParse({ data: file.buffer });
-    const pdfData = await parser.getText();
-    const fullText = pdfData.text;
+    // Extract text safely using PDFParse class instance
+    let fullText = '';
+    try {
+      const parser = new PDFParse({ data: file.buffer });
+      const pdfData = await parser.getText();
+      fullText = pdfData.text;
+    } catch (parseError) {
+      console.error('PDF parsing error:', parseError);
+      return res.status(400).json({ 
+        error: 'Failed to process PDF. Please ensure the file is valid and not password-protected.' 
+      });
+    }
 
-    if (!fullText || fullText.trim().length === 0) {
+    if (!fullText || !fullText.trim()) {
       return res.status(400).json({ error: 'Could not extract text from PDF.' });
     }
 
-    const textChunks = chunkText(fullText);
+    // Chunk the text
+    const chunks = splitTextIntoChunks(fullText);
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
 
-    // FIXED: Added "models/" prefix
-    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
-
-    for (const chunk of textChunks) {
-      const result = await embeddingModel.embedContent(chunk);
-      const embedding = result.embedding.values;
+    // Generate embeddings & store in Supabase
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const embeddingResult = await embeddingModel.embedContent(chunk);
+      const embedding = embeddingResult.embedding.values;
 
       const { error } = await supabase.from('documents').insert({
         content: chunk,
         embedding: embedding,
-        metadata: {
-          sessionId: sessionId,
-          filename: file.originalname
-        }
+        metadata: { filename: file.originalname, chunkIndex: i }
       });
 
       if (error) {
-        console.error('Supabase Error:', error);
+        console.error('Supabase insertion error:', error);
         throw error;
       }
     }
 
-    res.json({
-      message: `Successfully indexed ${file.originalname}`,
-      chunksIndexed: textChunks.length
-    });
+    res.json({ message: 'File successfully processed and embedded!', filename: file.originalname });
   } catch (error) {
-    console.error('Indexing Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to index document.' });
-  } finally {
-    if (parser && typeof parser.destroy === 'function') {
-      await parser.destroy();
-    }
+    console.error('Upload Error:', error);
+    res.status(500).json({ error: 'Error processing document.' });
   }
 });
 
-// Query Endpoint
-app.post('/query', async (req, res) => {
+// 2. Chat / Query Route
+app.post('/api/chat', async (req, res) => {
   try {
-    const { query, sessionId = 'default-session' } = req.body;
-
-    if (!query) {
-      return res.status(400).json({ error: 'Query parameter is required.' });
+    const { question } = req.body;
+    if (!question) {
+      return res.status(400).json({ error: 'Question is required.' });
     }
 
-    // FIXED: Added "models/" prefix
-    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
-    const queryEmbedResult = await embeddingModel.embedContent(query);
-    const queryEmbedding = queryEmbedResult.embedding.values;
+    // Embed the user's question
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    const questionEmbeddingResult = await embeddingModel.embedContent(question);
+    const queryVector = questionEmbeddingResult.embedding.values;
 
-    const { data: matchedDocs, error: matchError } = await supabase.rpc('match_documents', {
-      query_embedding: queryEmbedding,
-      match_threshold: 0.25,
-      match_count: 5,
-      filter_metadata: { sessionId: sessionId }
+    // Match similar vectors via Supabase match_documents RPC
+    const { data: matchedDocuments, error } = await supabase.rpc('match_documents', {
+      query_embedding: queryVector,
+      match_threshold: 0.3,
+      match_count: 5
     });
 
-    if (matchError) {
-      console.error('Supabase Search Error:', matchError);
-      throw matchError;
+    if (error) {
+      console.error('Supabase Vector Search Error:', error);
+      throw error;
     }
 
-    const contextText = matchedDocs && matchedDocs.length > 0
-      ? matchedDocs.map(doc => doc.content).join('\n---\n')
-      : 'No relevant context found in documents.';
+    // Combine retrieved contexts
+    const context = matchedDocuments.map(doc => doc.content).join('\n---\n');
 
-    // FIXED: Added "models/" prefix
-    let model;
-    try {
-      model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
-    } catch {
-      model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-pro' });
-    }
+    // Generate response with Gemini
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `Use the following retrieved context to answer the user's question. If the answer is not in the context, state that clearly based on the provided documents.
 
-    const prompt = `You are SEC-Insight AI, an expert assistant for financial filings and document analysis.
-Answer the user's question accurately using ONLY the context provided below.
+Context:
+${context}
 
-Document Context:
-${contextText}
-
-User Question: ${query}`;
+User Question: ${question}`;
 
     const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+    const answer = result.response.text();
 
-    res.json({
-      answer: responseText,
-      sourcesMatched: matchedDocs ? matchedDocs.length : 0
-    });
+    res.json({ answer });
   } catch (error) {
-    console.error('Error handling query:', error);
-    res.status(500).json({ error: error.message || 'Failed to process query.' });
+    console.error('Chat Error:', error);
+    res.status(500).json({ error: 'Error generating answer.' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

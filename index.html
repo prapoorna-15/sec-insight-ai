@@ -1,289 +1,275 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SEC-Insight AI — Enterprise Document Intelligence</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    body {
-      display: flex;
-      height: 100vh;
-      background-color: #0b1329;
-      color: #e2e8f0;
-      overflow: hidden;
-    }
-    /* Sidebar Layout */
-    .sidebar {
-      width: 280px;
-      background-color: #0f172a;
-      border-right: 1px solid #1e293b;
-      padding: 24px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #ffffff;
-    }
-    .brand-subtitle {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin-top: -14px;
-      margin-left: 32px;
-    }
-    .btn-sync {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      background-color: #0284c7;
-      color: #ffffff;
-      border: none;
-      padding: 12px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-sync:hover { background-color: #0369a1; }
-    .status-card {
-      background-color: #1e293b;
-      border-radius: 6px;
-      padding: 14px;
-      font-size: 0.85rem;
-      color: #94a3b8;
-      border: 1px solid #334155;
-      line-height: 1.4;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuQuery AI</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
 
-    /* Main Terminal Layout */
-    .main-terminal {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background-color: #090d16;
-    }
-    .terminal-header {
-      padding: 18px 24px;
-      border-bottom: 1px solid #1e293b;
-      font-size: 1.1rem;
-      font-weight: 700;
-      text-align: center;
-      color: #f8fafc;
-    }
-    .chat-container {
-      flex: 1;
-      padding: 24px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .empty-state {
-      margin: auto;
-      text-align: center;
-      color: #64748b;
-    }
-    .empty-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-    }
-    .empty-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #94a3b8;
-      margin-bottom: 6px;
-    }
-    .empty-desc {
-      font-size: 0.9rem;
-      color: #64748b;
-    }
-    .chat-bubble {
-      max-width: 80%;
-      padding: 14px 18px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      line-height: 1.5;
-    }
-    .chat-user {
-      align-self: flex-end;
-      background-color: #0284c7;
-      color: #ffffff;
-    }
-    .chat-ai {
-      align-self: flex-start;
-      background-color: #1e293b;
-      color: #e2e8f0;
-      border: 1px solid #334155;
-    }
+        body {
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            height: 100vh;
+        }
 
-    /* Input Bar */
-    .input-bar {
-      padding: 16px 24px;
-      border-top: 1px solid #1e293b;
-      display: flex;
-      gap: 12px;
-      background-color: #0f172a;
-    }
-    .input-bar input {
-      flex: 1;
-      background-color: #090d16;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 12px 16px;
-      color: #ffffff;
-      font-size: 0.95rem;
-      outline: none;
-    }
-    .input-bar input:focus {
-      border-color: #0284c7;
-    }
-    .btn-send {
-      background-color: #0284c7;
-      color: white;
-      border: none;
-      width: 44px;
-      height: 44px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 1.1rem;
-    }
-    .btn-send:hover { background-color: #0369a1; }
-    #hiddenFileInput { display: none; }
-  </style>
+        /* Sidebar Styling */
+        .sidebar {
+            width: 300px;
+            background-color: #ffffff;
+            border-right: 1px solid #e0e0e0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar h2 {
+            font-size: 1.2rem;
+            color: #2c3e50;
+        }
+
+        .upload-box {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background-color: #ebf5fb;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .upload-box:hover {
+            background-color: #d4e6f1;
+        }
+
+        .upload-box input[type="file"] {
+            display: none;
+        }
+
+        .doc-list {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .doc-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+
+        /* Main Chat Window Styling */
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background-color: #fafafa;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: #3498db;
+            color: #ffffff;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.ai {
+            align-self: flex-start;
+            background-color: #f1f2f6;
+            color: #2c3e50;
+            border-bottom-left-radius: 2px;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-area input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            outline: none;
+            font-size: 1rem;
+        }
+
+        .chat-input-area input:focus {
+            border-color: #3498db;
+        }
+
+        .chat-input-area button {
+            padding: 12px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s ease;
+        }
+
+        .chat-input-area button:hover {
+            background-color: #2980b9;
+        }
+
+        .status-message {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+    </style>
 </head>
 <body>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="brand">
-      📄 <span>SEC-Insight AI</span>
-    </div>
-    <div class="brand-subtitle">Enterprise Document Intelligence</div>
-
-    <button class="btn-sync" onclick="triggerFileSelect()">
-      🔄 Sync Local Docs
-    </button>
-    <input type="file" id="hiddenFileInput" accept="application/pdf" onchange="uploadDocument(event)">
-
-    <div class="status-card" id="statusCard">
-      Ready to sync documents. Click above to select a PDF filing.
-    </div>
-  </div>
-
-  <!-- Terminal Main Panel -->
-  <div class="main-terminal">
-    <div class="terminal-header">Document QA Terminal</div>
-
-    <div class="chat-container" id="chatContainer">
-      <div class="empty-state" id="emptyState">
-        <div class="empty-icon">📄</div>
-        <div class="empty-title">No Active Query Session</div>
-        <div class="empty-desc">Sync your PDFs from the sidebar and start asking questions about financial filings.</div>
-      </div>
+    <div class="sidebar">
+        <h2>Document Management</h2>
+        <div class="upload-box" onclick="document.getElementById('hiddenFileInput').click()">
+            <p><strong>Click to Upload PDF</strong></p>
+            <span class="status-message" id="uploadStatus">Supports .pdf documents</span>
+            <input type="file" id="hiddenFileInput" accept=".pdf" onchange="uploadDocument(event)">
+        </div>
+        
+        <h3>Uploaded Files</h3>
+        <div class="doc-list" id="docList">
+            <!-- Uploaded filenames will appear here -->
+        </div>
     </div>
 
-    <div class="input-bar">
-      <input type="text" id="queryInput" placeholder="Ask a question about your indexed documents..." onkeydown="if(event.key==='Enter') sendQuery()">
-      <button class="btn-send" onclick="sendQuery()">➔</button>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>Chat with your Documents</h2>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai">Hello! Upload a PDF to the sidebar and ask me anything about its contents.</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="userInput" placeholder="Ask a question about your documents..." onkeydown="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">Send</button>
+        </div>
     </div>
-  </div>
 
-  <script>
-    const sessionId = "session-1";
+    <script>
+        async function uploadDocument(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-    function triggerFileSelect() {
-      document.getElementById('hiddenFileInput').click();
-    }
+            const uploadStatus = document.getElementById('uploadStatus');
+            const docList = document.getElementById('docList');
+            const fileInput = event.target;
 
-    async function uploadDocument(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+            uploadStatus.innerText = 'Uploading & indexing...';
 
-      const statusCard = document.getElementById('statusCard');
-      statusCard.innerText = `Indexing "${file.name}"... Please wait.`;
+            const formData = new FormData();
+            formData.append('file', file);
 
-      const formData = new FormData();
-      formData.append('document', file);
-      formData.append('sessionId', sessionId);
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
 
-      try {
-        const res = await fetch('/upload-and-index', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
+                const data = await response.json();
 
-        if (res.ok) {
-          statusCard.innerHTML = `<span style="color:#4ade80;">✔ Indexing complete!</span><br>${data.chunksIndexed} chunks processed.`;
-        } else {
-          statusCard.innerHTML = `<span style="color:#f87171;">Failed to index document.</span><br>${data.error}`;
+                if (response.ok) {
+                    uploadStatus.innerText = 'Upload successful!';
+                    
+                    const docItem = document.createElement('div');
+                    docItem.className = 'doc-item';
+                    docItem.innerText = data.filename || file.name;
+                    docList.appendChild(docItem);
+                } else {
+                    uploadStatus.innerText = 'Error: ' + (data.error || 'Upload failed');
+                }
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                uploadStatus.innerText = 'Upload failed.';
+            } finally {
+                // Reset file input value so re-uploading the same file triggers onchange
+                fileInput.value = '';
+            }
         }
-      } catch (err) {
-        statusCard.innerHTML = `<span style="color:#f87171;">Failed to index document. Ensure backend is running.</span>`;
-      }
-    }
 
-    async function sendQuery() {
-      const input = document.getElementById('queryInput');
-      const query = input.value.trim();
-      if (!query) return;
+        async function sendMessage() {
+            const inputElement = document.getElementById('userInput');
+            const question = inputElement.value.trim();
+            if (!question) return;
 
-      const chatContainer = document.getElementById('chatContainer');
-      const emptyState = document.getElementById('emptyState');
+            const chatMessages = document.getElementById('chatMessages');
 
-      if (emptyState) emptyState.remove();
+            // Append User Message
+            const userBubble = document.createElement('div');
+            userBubble.className = 'message user';
+            userBubble.innerText = question;
+            chatMessages.appendChild(userBubble);
 
-      // Append User Bubble
-      const userBubble = document.createElement('div');
-      userBubble.className = 'chat-bubble chat-user';
-      userBubble.innerText = query;
-      chatContainer.appendChild(userBubble);
+            inputElement.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
 
-      input.value = '';
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+            // Append Placeholder AI Response
+            const aiBubble = document.createElement('div');
+            aiBubble.className = 'message ai';
+            aiBubble.innerText = 'Thinking...';
+            chatMessages.appendChild(aiBubble);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
 
-      // Append Loading AI Bubble
-      const aiBubble = document.createElement('div');
-      aiBubble.className = 'chat-bubble chat-ai';
-      aiBubble.innerText = 'Analyzing document context...';
-      chatContainer.appendChild(aiBubble);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
 
-      try {
-        const res = await fetch('/query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query, sessionId: sessionId })
-        });
-        const data = await res.json();
+                const data = await response.json();
 
-        if (res.ok) {
-          aiBubble.innerText = data.answer;
-        } else {
-          aiBubble.innerText = `Error: ${data.error || 'Failed to generate answer.'}`;
+                if (response.ok) {
+                    aiBubble.innerText = data.answer;
+                } else {
+                    aiBubble.innerText = 'Error: ' + (data.error || 'Failed to get answer.');
+                }
+            } catch (error) {
+                console.error('Error during chat request:', error);
+                aiBubble.innerText = 'Error connecting to the server.';
+            }
+
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-      } catch (err) {
-        aiBubble.innerText = 'Error: Could not reach the server.';
-      }
-
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-  </script>
+    </script>
 </body>
 </html>
