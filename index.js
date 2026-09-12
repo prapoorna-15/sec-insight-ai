@@ -10,29 +10,25 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-// Setup __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Initialize Supabase Client
+// Serve static frontend files from root directory
+app.use(express.static(__dirname));
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Initialize Gemini Client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_SEC_INSIGHT);
-
-// Multer memory storage setup for PDF uploads
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper: Split text into ~1000 character chunks
 function chunkText(text, chunkSize = 1000, overlap = 200) {
   const chunks = [];
   let index = 0;
@@ -44,47 +40,38 @@ function chunkText(text, chunkSize = 1000, overlap = 200) {
   return chunks;
 }
 
-// ----------------------------------------------------
-// ROUTES
-// ----------------------------------------------------
-
-// 1. Serve index.html web interface at the root URL
+// Serve Main UI
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 2. Health check endpoint
+// Health Check Endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'SEC-Insight AI RAG API is live 🚀' });
 });
 
-// 3. Upload & Index PDF Document
+// Sync / Upload & Index Endpoint
 app.post('/upload-and-index', upload.single('document'), async (req, res) => {
   let parser = null;
   try {
-    const { sessionId } = req.body;
+    const sessionId = req.body.sessionId || 'default-session';
     const file = req.file;
 
-    if (!file || !sessionId) {
-      return res.status(400).json({ error: 'Both "document" PDF file and "sessionId" are required.' });
+    if (!file) {
+      return res.status(400).json({ error: 'No PDF file provided.' });
     }
 
-    // Extract text using pdf-parse v2 API
     parser = new PDFParse({ data: file.buffer });
     const pdfData = await parser.getText();
     const fullText = pdfData.text;
 
     if (!fullText || fullText.trim().length === 0) {
-      return res.status(400).json({ error: 'Could not extract text from the provided PDF file.' });
+      return res.status(400).json({ error: 'Could not extract text from PDF.' });
     }
 
-    // Chunk text
     const textChunks = chunkText(fullText);
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
 
-    // Get embedding model (gemini-embedding-001 outputs 3072 dimensions)
-    const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-
-    // Generate embeddings & store in Supabase
     for (const chunk of textChunks) {
       const result = await embeddingModel.embedContent(chunk);
       const embedding = result.embedding.values;
@@ -99,17 +86,17 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
       });
 
       if (error) {
-        console.error('Supabase Insert Error:', error);
+        console.error('Supabase Error:', error);
         throw error;
       }
     }
 
     res.json({
-      message: `Successfully indexed "${file.originalname}" under session context.`,
+      message: `Successfully indexed ${file.originalname}`,
       chunksIndexed: textChunks.length
     });
   } catch (error) {
-    console.error('Error during document indexing:', error);
+    console.error('Indexing Error:', error);
     res.status(500).json({ error: error.message || 'Failed to index document.' });
   } finally {
     if (parser && typeof parser.destroy === 'function') {
@@ -118,21 +105,19 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
   }
 });
 
-// 4. Query RAG Endpoint
+// Query Endpoint
 app.post('/query', async (req, res) => {
   try {
-    const { query, sessionId } = req.body;
+    const { query, sessionId = 'default-session' } = req.body;
 
-    if (!query || !sessionId) {
-      return res.status(400).json({ error: 'Both "query" and "sessionId" are required.' });
+    if (!query) {
+      return res.status(400).json({ error: 'Query parameter is required.' });
     }
 
-    // Generate embedding for user query (3072 dimensions)
-    const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     const queryEmbedResult = await embeddingModel.embedContent(query);
     const queryEmbedding = queryEmbedResult.embedding.values;
 
-    // Vector search in Supabase
     const { data: matchedDocs, error: matchError } = await supabase.rpc('match_documents', {
       query_embedding: queryEmbedding,
       match_threshold: 0.25,
@@ -145,30 +130,25 @@ app.post('/query', async (req, res) => {
       throw matchError;
     }
 
-    // Build context block
     const contextText = matchedDocs && matchedDocs.length > 0
       ? matchedDocs.map(doc => doc.content).join('\n---\n')
-      : 'No relevant context found in uploaded documents.';
+      : 'No relevant context found in documents.';
 
-    // Generation model execution with fallback
-    let modelName = 'gemini-2.5-flash';
+    // Updated Gemini Model (gemini-1.5-flash)
     let model;
-
     try {
-      model = genAI.getGenerativeModel({ model: modelName });
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     } catch {
-      modelName = 'gemini-1.5-flash';
-      model = genAI.getGenerativeModel({ model: modelName });
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
     }
 
-    const prompt = `You are SEC-Insight AI, an expert assistant for analyzing documents.
-Answer the user's question using ONLY the provided document context below. If the answer cannot be determined from the context, state that clearly.
+    const prompt = `You are SEC-Insight AI, an expert assistant for financial filings and document analysis.
+Answer the user's question accurately using ONLY the context provided below.
 
 Document Context:
 ${contextText}
 
-User Question: ${query}
-`;
+User Question: ${query}`;
 
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
@@ -183,7 +163,6 @@ User Question: ${query}
   }
 });
 
-// Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

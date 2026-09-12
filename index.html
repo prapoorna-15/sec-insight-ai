@@ -3,168 +3,287 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SEC-Insight AI</title>
+  <title>SEC-Insight AI — Enterprise Document Intelligence</title>
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 650px;
-      margin: 40px auto;
-      padding: 20px;
-      background-color: #f9f9fb;
-      color: #333;
-    }
-    .card {
-      background: #ffffff;
-      padding: 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      margin-bottom: 24px;
-    }
-    h2 { margin-top: 0; color: #0056b3; }
-    h3 { margin-top: 0; color: #333; }
-    label { font-weight: 600; display: block; margin-top: 12px; }
-    input[type="text"], input[type="file"], textarea {
-      width: 100%;
-      padding: 10px;
-      margin-top: 6px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+    * {
       box-sizing: border-box;
-      font-size: 14px;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    textarea { height: 80px; resize: vertical; }
-    button {
-      margin-top: 16px;
+    body {
+      display: flex;
+      height: 100vh;
+      background-color: #0b1329;
+      color: #e2e8f0;
+      overflow: hidden;
+    }
+    /* Sidebar Layout */
+    .sidebar {
+      width: 280px;
+      background-color: #0f172a;
+      border-right: 1px solid #1e293b;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .brand-subtitle {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: -14px;
+      margin-left: 32px;
+    }
+    .btn-sync {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       width: 100%;
-      background-color: #0066cc;
-      color: white;
+      background-color: #0284c7;
+      color: #ffffff;
       border: none;
       padding: 12px;
-      font-size: 16px;
+      border-radius: 6px;
       font-weight: 600;
-      border-radius: 4px;
       cursor: pointer;
-      transition: background-color 0.2s;
+      transition: background 0.2s;
     }
-    button:hover { background-color: #0052a3; }
-    button:disabled { background-color: #cccccc; cursor: not-allowed; }
-    .response-box {
-      margin-top: 16px;
-      padding: 12px;
-      background: #eef2f6;
-      border-left: 4px solid #0066cc;
-      border-radius: 4px;
-      font-family: inherit;
-      white-space: pre-wrap;
-      font-size: 14px;
+    .btn-sync:hover { background-color: #0369a1; }
+    .status-card {
+      background-color: #1e293b;
+      border-radius: 6px;
+      padding: 14px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      line-height: 1.4;
+    }
+
+    /* Main Terminal Layout */
+    .main-terminal {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: #090d16;
+    }
+    .terminal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid #1e293b;
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-align: center;
+      color: #f8fafc;
+    }
+    .chat-container {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: #64748b;
+    }
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    .empty-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+    .empty-desc {
+      font-size: 0.9rem;
+      color: #64748b;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 0.95rem;
       line-height: 1.5;
     }
-    hr { border: 0; height: 1px; background: #e0e0e0; margin: 30px 0; }
+    .chat-user {
+      align-self: flex-end;
+      background-color: #0284c7;
+      color: #ffffff;
+    }
+    .chat-ai {
+      align-self: flex-start;
+      background-color: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+    }
+
+    /* Input Bar */
+    .input-bar {
+      padding: 16px 24px;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      gap: 12px;
+      background-color: #0f172a;
+    }
+    .input-bar input {
+      flex: 1;
+      background-color: #090d16;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 12px 16px;
+      color: #ffffff;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .input-bar input:focus {
+      border-color: #0284c7;
+    }
+    .btn-send {
+      background-color: #0284c7;
+      color: white;
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+    }
+    .btn-send:hover { background-color: #0369a1; }
+    #hiddenFileInput { display: none; }
   </style>
 </head>
 <body>
 
-  <!-- Section 1: Session & PDF Upload -->
-  <div class="card">
-    <h2>SEC-Insight AI — Document Upload</h2>
-    <form id="uploadForm">
-      <label for="sessionId">Session ID:</label>
-      <input type="text" id="sessionId" value="session-1" required>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="brand">
+      📄 <span>SEC-Insight AI</span>
+    </div>
+    <div class="brand-subtitle">Enterprise Document Intelligence</div>
 
-      <label for="pdfFile">Select PDF Document:</label>
-      <input type="file" id="pdfFile" accept="application/pdf" required>
+    <button class="btn-sync" onclick="triggerFileSelect()">
+      🔄 Sync Local Docs
+    </button>
+    <input type="file" id="hiddenFileInput" accept="application/pdf" onchange="uploadDocument(event)">
 
-      <button type="submit" id="uploadBtn">Upload & Index</button>
-    </form>
-
-    <div id="uploadStatus" class="response-box" style="display:none;"></div>
+    <div class="status-card" id="statusCard">
+      Ready to sync documents. Click above to select a PDF filing.
+    </div>
   </div>
 
-  <!-- Section 2: Query / Ask Question -->
-  <div class="card">
-    <h3>Ask Questions About Your Document</h3>
-    <form id="queryForm">
-      <label for="querySessionId">Session ID:</label>
-      <input type="text" id="querySessionId" value="session-1" required>
+  <!-- Terminal Main Panel -->
+  <div class="main-terminal">
+    <div class="terminal-header">Document QA Terminal</div>
 
-      <label for="userQuery">Question:</label>
-      <textarea id="userQuery" placeholder="What is the main topic of the uploaded document?" required></textarea>
+    <div class="chat-container" id="chatContainer">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📄</div>
+        <div class="empty-title">No Active Query Session</div>
+        <div class="empty-desc">Sync your PDFs from the sidebar and start asking questions about financial filings.</div>
+      </div>
+    </div>
 
-      <button type="submit" id="queryBtn">Ask SEC-Insight AI</button>
-    </form>
-
-    <div id="queryAnswer" class="response-box" style="display:none;"></div>
+    <div class="input-bar">
+      <input type="text" id="queryInput" placeholder="Ask a question about your indexed documents..." onkeydown="if(event.key==='Enter') sendQuery()">
+      <button class="btn-send" onclick="sendQuery()">➔</button>
+    </div>
   </div>
 
   <script>
-    // Sync session IDs between input fields automatically
-    const sessionIdInput = document.getElementById('sessionId');
-    const querySessionIdInput = document.getElementById('querySessionId');
-    sessionIdInput.addEventListener('input', (e) => {
-      querySessionIdInput.value = e.target.value;
-    });
+    const sessionId = "session-1";
 
-    // Handle PDF Upload
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const statusDiv = document.getElementById('uploadStatus');
-      const uploadBtn = document.getElementById('uploadBtn');
-      
-      statusDiv.style.display = 'block';
-      statusDiv.innerText = 'Uploading and processing PDF...';
-      uploadBtn.disabled = true;
+    function triggerFileSelect() {
+      document.getElementById('hiddenFileInput').click();
+    }
+
+    async function uploadDocument(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const statusCard = document.getElementById('statusCard');
+      statusCard.innerText = `Indexing "${file.name}"... Please wait.`;
 
       const formData = new FormData();
-      formData.append('sessionId', sessionIdInput.value);
-      formData.append('document', document.getElementById('pdfFile').files[0]);
+      formData.append('document', file);
+      formData.append('sessionId', sessionId);
 
       try {
-        const res = await fetch('/upload-and-index', { method: 'POST', body: formData });
+        const res = await fetch('/upload-and-index', {
+          method: 'POST',
+          body: formData
+        });
         const data = await res.json();
+
         if (res.ok) {
-          statusDiv.innerText = `Success: ${data.message} (${data.chunksIndexed} chunks indexed)`;
+          statusCard.innerHTML = `<span style="color:#4ade80;">✔ Indexing complete!</span><br>${data.chunksIndexed} chunks processed.`;
         } else {
-          statusDiv.innerText = `Error: ${data.error || 'Upload failed.'}`;
+          statusCard.innerHTML = `<span style="color:#f87171;">Failed to index document.</span><br>${data.error}`;
         }
       } catch (err) {
-        statusDiv.innerText = 'Network error while uploading file.';
-      } finally {
-        uploadBtn.disabled = false;
+        statusCard.innerHTML = `<span style="color:#f87171;">Failed to index document. Ensure backend is running.</span>`;
       }
-    });
+    }
 
-    // Handle Querying the Document
-    document.getElementById('queryForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const answerDiv = document.getElementById('queryAnswer');
-      const queryBtn = document.getElementById('queryBtn');
-      
-      answerDiv.style.display = 'block';
-      answerDiv.innerText = 'Searching context and generating answer...';
-      queryBtn.disabled = true;
+    async function sendQuery() {
+      const input = document.getElementById('queryInput');
+      const query = input.value.trim();
+      if (!query) return;
+
+      const chatContainer = document.getElementById('chatContainer');
+      const emptyState = document.getElementById('emptyState');
+
+      if (emptyState) emptyState.remove();
+
+      // Append User Bubble
+      const userBubble = document.createElement('div');
+      userBubble.className = 'chat-bubble chat-user';
+      userBubble.innerText = query;
+      chatContainer.appendChild(userBubble);
+
+      input.value = '';
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+
+      // Append Loading AI Bubble
+      const aiBubble = document.createElement('div');
+      aiBubble.className = 'chat-bubble chat-ai';
+      aiBubble.innerText = 'Analyzing document context...';
+      chatContainer.appendChild(aiBubble);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
 
       try {
         const res = await fetch('/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: querySessionIdInput.value,
-            query: document.getElementById('userQuery').value
-          })
+          body: JSON.stringify({ query: query, sessionId: sessionId })
         });
-        
         const data = await res.json();
+
         if (res.ok) {
-          answerDiv.innerText = data.answer;
+          aiBubble.innerText = data.answer;
         } else {
-          answerDiv.innerText = `Error: ${data.error || 'Failed to generate response.'}`;
+          aiBubble.innerText = `Error: ${data.error || 'Failed to generate answer.'}`;
         }
       } catch (err) {
-        answerDiv.innerText = 'Network error while contacting server.';
-      } finally {
-        queryBtn.disabled = false;
+        aiBubble.innerText = 'Error: Could not reach the server.';
       }
-    });
+
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
   </script>
 </body>
 </html>
