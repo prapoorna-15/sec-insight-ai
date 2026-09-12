@@ -1,11 +1,12 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
+import cors from 'cors';
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PDFParse } from 'pdf-parse';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -15,20 +16,22 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Initialize Supabase & Gemini using environment variables
+// Support both GEMINI_API_KEY_SEC_INSIGHT and GEMINI_API_KEY
+const geminiApiKey = process.env.GEMINI_API_KEY_SEC_INSIGHT || process.env.GEMINI_API_KEY;
+
+// Initialize Supabase & Gemini
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(geminiApiKey);
 
-// ADD THESE LINES:
+app.use(cors());
 app.use(express.json());
 
-// Serve static files directly from the root directory
+// Serve static files directly from project root & serve index.html at GET /
 app.use(express.static(__dirname));
 
-// Route to serve index.html at the root URL
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -53,7 +56,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded.' });
     }
 
-    // Extract text safely using PDFParse class instance
+    // Safely parse PDF
     let fullText = '';
     try {
       const parser = new PDFParse({ data: file.buffer });
@@ -70,11 +73,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Could not extract text from PDF.' });
     }
 
-    // Chunk the text
+    // Chunk text
     const chunks = splitTextIntoChunks(fullText);
     const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
 
-    // Generate embeddings & store in Supabase
+    // Store chunks and embeddings in Supabase
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const embeddingResult = await embeddingModel.embedContent(chunk);
@@ -107,12 +110,12 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Question is required.' });
     }
 
-    // Embed the user's question
+    // Embed user question
     const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     const questionEmbeddingResult = await embeddingModel.embedContent(question);
     const queryVector = questionEmbeddingResult.embedding.values;
 
-    // Match similar vectors via Supabase match_documents RPC
+    // Vector match in Supabase
     const { data: matchedDocuments, error } = await supabase.rpc('match_documents', {
       query_embedding: queryVector,
       match_threshold: 0.3,
@@ -124,10 +127,9 @@ app.post('/api/chat', async (req, res) => {
       throw error;
     }
 
-    // Combine retrieved contexts
     const context = matchedDocuments.map(doc => doc.content).join('\n---\n');
 
-    // Generate response with Gemini
+    // Generate answer with Gemini
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `Use the following retrieved context to answer the user's question. If the answer is not in the context, state that clearly based on the provided documents.
 
