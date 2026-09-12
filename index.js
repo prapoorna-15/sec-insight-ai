@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
@@ -60,6 +60,7 @@ app.get('/health', (req, res) => {
 
 // 3. Upload & Index PDF Document
 app.post('/upload-and-index', upload.single('document'), async (req, res) => {
+  let parser = null;
   try {
     const { sessionId } = req.body;
     const file = req.file;
@@ -68,8 +69,9 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
       return res.status(400).json({ error: 'Both "document" PDF file and "sessionId" are required.' });
     }
 
-    // Extract text from PDF buffer
-    const pdfData = await pdfParse(file.buffer);
+    // Extract text using pdf-parse v2 API
+    parser = new PDFParse({ data: file.buffer });
+    const pdfData = await parser.getText();
     const fullText = pdfData.text;
 
     if (!fullText || fullText.trim().length === 0) {
@@ -109,6 +111,10 @@ app.post('/upload-and-index', upload.single('document'), async (req, res) => {
   } catch (error) {
     console.error('Error during document indexing:', error);
     res.status(500).json({ error: error.message || 'Failed to index document.' });
+  } finally {
+    if (parser && typeof parser.destroy === 'function') {
+      await parser.destroy();
+    }
   }
 });
 
