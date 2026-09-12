@@ -2,14 +2,18 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: #0f172a;
+  color: #f8fafc;
 }
 
 .app-container {
   display: flex;
   height: 100vh;
-  background-color: #0f172a;
-  color: #f8fafc;
+  width: 100vw;
 }
 
 .sidebar {
@@ -19,74 +23,63 @@
   border-right: 1px solid #334155;
   display: flex;
   flex-direction: column;
+  gap: 16px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.sidebar h2 {
+  font-size: 1.25rem;
   color: #38bdf8;
 }
 
 .subtitle {
   font-size: 0.85rem;
   color: #94a3b8;
-  margin-top: 4px;
-  margin-bottom: 24px;
 }
 
-.btn-index {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 12px;
+.sync-btn {
   background-color: #0284c7;
-  color: #ffffff;
+  color: white;
   border: none;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 }
 
-.btn-index:hover:not(:disabled) {
+.sync-btn:hover:not(:disabled) {
   background-color: #0369a1;
 }
 
-.btn-index:disabled {
+.sync-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .status-box {
-  margin-top: 16px;
+  background-color: #0f172a;
   padding: 12px;
-  background-color: #334155;
   border-radius: 6px;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  border: 1px solid #334155;
+  color: #38bdf8;
 }
 
-.chat-container {
+.chat-terminal {
   flex: 1;
   display: flex;
   flex-direction: column;
   background-color: #0f172a;
 }
 
-.chat-header {
-  padding: 20px 32px;
+.terminal-header {
+  padding: 16px 24px;
   border-bottom: 1px solid #334155;
   background-color: #1e293b;
 }
 
-.chat-feed {
+.messages-container {
   flex: 1;
-  padding: 32px;
+  padding: 24px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -95,18 +88,13 @@
 
 .empty-state {
   margin: auto;
-  text-align: center;
   color: #64748b;
-}
-
-.empty-state h4 {
-  margin-top: 12px;
-  color: #94a3b8;
+  text-align: center;
 }
 
 .message-bubble {
-  max-width: 80%;
-  padding: 16px;
+  max-width: 75%;
+  padding: 14px 18px;
   border-radius: 8px;
   line-height: 1.5;
 }
@@ -114,49 +102,61 @@
 .message-bubble.user {
   align-self: flex-end;
   background-color: #0284c7;
-  color: #ffffff;
+  color: white;
 }
 
 .message-bubble.ai {
   align-self: flex-start;
   background-color: #1e293b;
   border: 1px solid #334155;
-  color: #e2e8f0;
+  color: #f8fafc;
+}
+
+.message-bubble.loading {
+  font-style: italic;
+  color: #94a3b8;
+}
+
+.message-bubble strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  opacity: 0.8;
 }
 
 .input-form {
-  display: flex;
-  padding: 24px 32px;
-  gap: 12px;
-  border-top: 1px solid #334155;
+  padding: 16px 24px;
   background-color: #1e293b;
+  border-top: 1px solid #334155;
+  display: flex;
+  gap: 12px;
 }
 
 .input-form input {
   flex: 1;
-  padding: 14px 18px;
-  border-radius: 8px;
-  border: 1px solid #475569;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid #334155;
   background-color: #0f172a;
-  color: #ffffff;
+  color: white;
   outline: none;
 }
 
+.input-form input:focus {
+  border-color: #38bdf8;
+}
+
 .input-form button {
-  padding: 0 20px;
+  padding: 12px 24px;
   background-color: #38bdf8;
   color: #0f172a;
   border: none;
-  border-radius: 8px;
-  cursor: pointer;
+  border-radius: 6px;
   font-weight: bold;
+  cursor: pointer;
 }
 
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.input-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

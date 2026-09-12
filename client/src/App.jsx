@@ -1,123 +1,136 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-import { Send, FileText, RefreshCw, CheckCircle } from 'lucide-react';
 import './App.css';
 
-const API_BASE_URL = 'http://localhost:5000';
+// Dynamic API URL: defaults to localhost:5000 in development, uses production URL in deployment
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function App() {
   const [query, setQuery] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [indexing, setIndexing] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [isQuerying, setIsQuerying] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Handle document indexing trigger
-  const handleIndexDocs = async () => {
-    setIndexing(true);
-    setStatusMessage('Indexing PDFs from MyDocs folder...');
+  // 1. Trigger Document Vector Ingestion Pipeline
+  const handleSyncDocs = async () => {
+    setIsIndexing(true);
+    setStatusMessage('Syncing & indexing local documents from MyDocs...');
     try {
-      const response = await axios.post(`${API_BASE_URL}/index-docs`);
-      setStatusMessage(response.data.message || 'Indexing completed successfully!');
-    } catch (error) {
-      console.error('Indexing error:', error);
-      setStatusMessage('Failed to index documents. Ensure backend is running.');
+      const res = await fetch(`${API_BASE_URL}/index-docs`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatusMessage(data.message || 'Successfully indexed all PDFs into Supabase!');
+      } else {
+        setStatusMessage(`Error: ${data.details || data.error}`);
+      }
+    } catch (err) {
+      setStatusMessage('Failed to reach backend API engine. Verify Express server is active.');
     } finally {
-      setIndexing(false);
+      setIsIndexing(false);
     }
   };
 
-  // Handle asking questions
+  // 2. Submit Query to RAG Backend Engine
   const handleSendQuery = async (e) => {
     e.preventDefault();
-    if (!query.trim() || loading) return;
+    if (!query.trim() || isQuerying) return;
 
-    const userMessage = query.trim();
+    const userText = query.trim();
     setQuery('');
-    
-    setChatHistory((prev) => [...prev, { sender: 'user', text: userMessage }]);
-    setLoading(true);
+
+    // Append user question to terminal history
+    setMessages((prev) => [...prev, { sender: 'user', text: userText }]);
+    setIsQuerying(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/query`, { query: userMessage });
-      const aiAnswer = response.data.answer;
+      const res = await fetch(`${API_BASE_URL}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: userText }),
+      });
+      const data = await res.json();
 
-      setChatHistory((prev) => [...prev, { sender: 'ai', text: aiAnswer }]);
-    } catch (error) {
-      console.error('Query error:', error);
-      setChatHistory((prev) => [
+      if (res.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { sender: 'ai', text: data.answer },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { sender: 'ai', text: `Error: ${data.details || data.error}` },
+        ]);
+      }
+    } catch (err) {
+      setMessages((prev) => [
         ...prev,
-        { sender: 'ai', text: 'Error fetching response from backend. Check server connection.' },
+        { sender: 'ai', text: 'Error connecting to backend server.' },
       ]);
     } finally {
-      setLoading(false);
+      setIsQuerying(false);
     }
   };
 
   return (
     <div className="app-container">
-      {/* Sidebar */}
+      {/* Control Sidebar */}
       <aside className="sidebar">
-        <div className="brand">
-          <FileText className="brand-icon" />
-          <h2>SEC-Insight AI</h2>
-        </div>
+        <h2>📄 SEC-Insight AI</h2>
         <p className="subtitle">Enterprise Document Intelligence</p>
 
-        <div className="sidebar-actions">
-          <button onClick={handleIndexDocs} disabled={indexing} className="btn-index">
-            <RefreshCw className={indexing ? 'spin' : ''} size={18} />
-            {indexing ? 'Indexing Vectors...' : 'Sync Local Docs'}
-          </button>
-        </div>
+        <button 
+          className="sync-btn" 
+          onClick={handleSyncDocs} 
+          disabled={isIndexing}
+        >
+          {isIndexing ? 'Indexing Vectors...' : '🔄 Sync Local Docs'}
+        </button>
 
         {statusMessage && (
           <div className="status-box">
-            {indexing ? <RefreshCw className="spin" size={16} /> : <CheckCircle size={16} />}
-            <span>{statusMessage}</span>
+            <small>{statusMessage}</small>
           </div>
         )}
       </aside>
 
-      {/* Main Workspace */}
-      <main className="chat-container">
-        <header className="chat-header">
+      {/* Main Terminal UI */}
+      <main className="chat-terminal">
+        <header className="terminal-header">
           <h3>Document QA Terminal</h3>
         </header>
 
-        <div className="chat-feed">
-          {chatHistory.length === 0 ? (
+        <div className="messages-container">
+          {messages.length === 0 ? (
             <div className="empty-state">
-              <FileText size={48} />
-              <h4>No Active Query Session</h4>
-              <p>Sync your PDFs from the sidebar and start asking questions about financial filings.</p>
+              <p>Ask questions based on your indexed financial documents in <code>MyDocs</code>.</p>
             </div>
           ) : (
-            chatHistory.map((msg, index) => (
-              <div key={index} className={`message-bubble ${msg.sender}`}>
-                <strong>{msg.sender === 'user' ? 'You' : 'SEC-Insight AI'}:</strong>
+            messages.map((msg, idx) => (
+              <div key={idx} className={`message-bubble ${msg.sender}`}>
+                <strong>{msg.sender === 'user' ? 'You:' : 'SEC-Insight AI:'}</strong>
                 <p>{msg.text}</p>
               </div>
             ))
           )}
-          {loading && (
+          {isQuerying && (
             <div className="message-bubble ai loading">
-              <RefreshCw className="spin" size={16} /> Retrieving vector context...
+              <p>SEC-Insight AI is retrieving document context and generating answer...</p>
             </div>
           )}
         </div>
 
-        {/* Query Input */}
-        <form onSubmit={handleSendQuery} className="input-form">
+        <form className="input-form" onSubmit={handleSendQuery}>
           <input
             type="text"
             placeholder="Ask a question about your indexed documents..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            disabled={loading}
+            disabled={isQuerying}
           />
-          <button type="submit" disabled={loading || !query.trim()}>
-            <Send size={18} />
+          <button type="submit" disabled={isQuerying || !query.trim()}>
+            Send
           </button>
         </form>
       </main>
