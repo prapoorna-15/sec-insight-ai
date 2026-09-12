@@ -7,8 +7,8 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 600px;
-      margin: 50px auto;
+      max-width: 650px;
+      margin: 40px auto;
       padding: 20px;
       background-color: #f9f9fb;
       color: #333;
@@ -17,20 +17,24 @@
       background: #ffffff;
       padding: 24px;
       border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      margin-bottom: 24px;
     }
-    h2 { margin-top: 0; }
+    h2 { margin-top: 0; color: #0056b3; }
+    h3 { margin-top: 0; color: #333; }
     label { font-weight: 600; display: block; margin-top: 12px; }
-    input[type="text"], input[type="file"] {
+    input[type="text"], input[type="file"], textarea {
       width: 100%;
       padding: 10px;
       margin-top: 6px;
       border: 1px solid #ccc;
       border-radius: 4px;
       box-sizing: border-box;
+      font-size: 14px;
     }
+    textarea { height: 80px; resize: vertical; }
     button {
-      margin-top: 18px;
+      margin-top: 16px;
       width: 100%;
       background-color: #0066cc;
       color: white;
@@ -40,20 +44,27 @@
       font-weight: 600;
       border-radius: 4px;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
     button:hover { background-color: #0052a3; }
-    #response {
-      margin-top: 20px;
+    button:disabled { background-color: #cccccc; cursor: not-allowed; }
+    .response-box {
+      margin-top: 16px;
       padding: 12px;
       background: #eef2f6;
       border-left: 4px solid #0066cc;
       border-radius: 4px;
-      font-family: monospace;
+      font-family: inherit;
       white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.5;
     }
+    hr { border: 0; height: 1px; background: #e0e0e0; margin: 30px 0; }
   </style>
 </head>
 <body>
+
+  <!-- Section 1: Session & PDF Upload -->
   <div class="card">
     <h2>SEC-Insight AI — Document Upload</h2>
     <form id="uploadForm">
@@ -63,34 +74,95 @@
       <label for="pdfFile">Select PDF Document:</label>
       <input type="file" id="pdfFile" accept="application/pdf" required>
 
-      <button type="submit" id="submitBtn">Upload & Index</button>
+      <button type="submit" id="uploadBtn">Upload & Index</button>
     </form>
 
-    <div id="response" style="display:none;"></div>
+    <div id="uploadStatus" class="response-box" style="display:none;"></div>
+  </div>
+
+  <!-- Section 2: Query / Ask Question -->
+  <div class="card">
+    <h3>Ask Questions About Your Document</h3>
+    <form id="queryForm">
+      <label for="querySessionId">Session ID:</label>
+      <input type="text" id="querySessionId" value="session-1" required>
+
+      <label for="userQuery">Question:</label>
+      <textarea id="userQuery" placeholder="What is the main topic of the uploaded document?" required></textarea>
+
+      <button type="submit" id="queryBtn">Ask SEC-Insight AI</button>
+    </form>
+
+    <div id="queryAnswer" class="response-box" style="display:none;"></div>
   </div>
 
   <script>
+    // Sync session IDs between input fields automatically
+    const sessionIdInput = document.getElementById('sessionId');
+    const querySessionIdInput = document.getElementById('querySessionId');
+    sessionIdInput.addEventListener('input', (e) => {
+      querySessionIdInput.value = e.target.value;
+    });
+
+    // Handle PDF Upload
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const responseDiv = document.getElementById('response');
-      const submitBtn = document.getElementById('submitBtn');
+      const statusDiv = document.getElementById('uploadStatus');
+      const uploadBtn = document.getElementById('uploadBtn');
       
-      responseDiv.style.display = 'block';
-      responseDiv.innerText = 'Processing document, please wait...';
-      submitBtn.disabled = true;
+      statusDiv.style.display = 'block';
+      statusDiv.innerText = 'Uploading and processing PDF...';
+      uploadBtn.disabled = true;
 
       const formData = new FormData();
-      formData.append('sessionId', document.getElementById('sessionId').value);
+      formData.append('sessionId', sessionIdInput.value);
       formData.append('document', document.getElementById('pdfFile').files[0]);
 
       try {
         const res = await fetch('/upload-and-index', { method: 'POST', body: formData });
         const data = await res.json();
-        responseDiv.innerText = JSON.stringify(data, null, 2);
+        if (res.ok) {
+          statusDiv.innerText = `Success: ${data.message} (${data.chunksIndexed} chunks indexed)`;
+        } else {
+          statusDiv.innerText = `Error: ${data.error || 'Upload failed.'}`;
+        }
       } catch (err) {
-        responseDiv.innerText = 'Error processing upload request.';
+        statusDiv.innerText = 'Network error while uploading file.';
       } finally {
-        submitBtn.disabled = false;
+        uploadBtn.disabled = false;
+      }
+    });
+
+    // Handle Querying the Document
+    document.getElementById('queryForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const answerDiv = document.getElementById('queryAnswer');
+      const queryBtn = document.getElementById('queryBtn');
+      
+      answerDiv.style.display = 'block';
+      answerDiv.innerText = 'Searching context and generating answer...';
+      queryBtn.disabled = true;
+
+      try {
+        const res = await fetch('/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: querySessionIdInput.value,
+            query: document.getElementById('userQuery').value
+          })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+          answerDiv.innerText = data.answer;
+        } else {
+          answerDiv.innerText = `Error: ${data.error || 'Failed to generate response.'}`;
+        }
+      } catch (err) {
+        answerDiv.innerText = 'Network error while contacting server.';
+      } finally {
+        queryBtn.disabled = false;
       }
     });
   </script>
