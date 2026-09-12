@@ -1,38 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Dynamic API URL: defaults to localhost:5000 in development, uses production URL in deployment
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = (import.meta && import.meta.env && import.meta.env.VITE_API_URL) || 'http://localhost:5000';
 
 function App() {
+  const [sessionId, setSessionId] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
-  const [isIndexing, setIsIndexing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isQuerying, setIsQuerying] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // 1. Trigger Document Vector Ingestion Pipeline
-  const handleSyncDocs = async () => {
-    setIsIndexing(true);
-    setStatusMessage('Syncing & indexing local documents from MyDocs...');
+  // Generate or retrieve session ID on initial load
+  useEffect(() => {
+    let existingSession = sessionStorage.getItem('sec_insight_session_id');
+    if (!existingSession) {
+      existingSession = 'session_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+      sessionStorage.setItem('sec_insight_session_id', existingSession);
+    }
+    setSessionId(existingSession);
+  }, []);
+
+  // 1. Upload & Index User Selected PDF
+  const handleFileUpload = async (e) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      setStatusMessage('Please select a PDF file first.');
+      return;
+    }
+
+    setIsUploading(true);
+    setStatusMessage(`Uploading and indexing ${selectedFile.name}...`);
+
+    const formData = new FormData();
+    formData.append('document', selectedFile);
+    formData.append('sessionId', sessionId);
+
     try {
-      const res = await fetch(`${API_BASE_URL}/index-docs`, {
+      const res = await fetch(`${API_BASE_URL}/upload-and-index`, {
         method: 'POST',
+        body: formData,
       });
+
       const data = await res.json();
       if (res.ok) {
-        setStatusMessage(data.message || 'Successfully indexed all PDFs into Supabase!');
+        setStatusMessage(data.message || 'File indexed successfully!');
+        setSelectedFile(null);
       } else {
         setStatusMessage(`Error: ${data.details || data.error}`);
       }
     } catch (err) {
-      setStatusMessage('Failed to reach backend API engine. Verify Express server is active.');
+      setStatusMessage('Failed to connect to backend server. Ensure backend is active.');
     } finally {
-      setIsIndexing(false);
+      setIsUploading(false);
     }
   };
 
-  // 2. Submit Query to RAG Backend Engine
+  // 2. Submit Query using Session Context
   const handleSendQuery = async (e) => {
     e.preventDefault();
     if (!query.trim() || isQuerying) return;
@@ -40,7 +65,6 @@ function App() {
     const userText = query.trim();
     setQuery('');
 
-    // Append user question to terminal history
     setMessages((prev) => [...prev, { sender: 'user', text: userText }]);
     setIsQuerying(true);
 
@@ -48,15 +72,12 @@ function App() {
       const res = await fetch(`${API_BASE_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userText }),
+        body: JSON.stringify({ query: userText, sessionId }),
       });
       const data = await res.json();
 
       if (res.ok) {
-        setMessages((prev) => [
-          ...prev,
-          { sender: 'ai', text: data.answer },
-        ]);
+        setMessages((prev) => [...prev, { sender: 'ai', text: data.answer }]);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -75,18 +96,32 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Control Sidebar */}
+      {/* Sidebar Controls */}
       <aside className="sidebar">
         <h2>📄 SEC-Insight AI</h2>
-        <p className="subtitle">Enterprise Document Intelligence</p>
+        <p className="subtitle">Multi-Tenant Document QA</p>
 
-        <button 
-          className="sync-btn" 
-          onClick={handleSyncDocs} 
-          disabled={isIndexing}
-        >
-          {isIndexing ? 'Indexing Vectors...' : '🔄 Sync Local Docs'}
-        </button>
+        <form onSubmit={handleFileUpload} className="upload-section">
+          <label className="file-input-label">
+            Choose PDF Document
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setSelectedFile(e.target.files[0])}
+              disabled={isUploading}
+            />
+          </label>
+          
+          {selectedFile && <span className="filename-preview">{selectedFile.name}</span>}
+
+          <button 
+            type="submit" 
+            className="sync-btn" 
+            disabled={isUploading || !selectedFile}
+          >
+            {isUploading ? 'Indexing PDF...' : '📤 Upload & Index PDF'}
+          </button>
+        </form>
 
         {statusMessage && (
           <div className="status-box">
@@ -104,7 +139,7 @@ function App() {
         <div className="messages-container">
           {messages.length === 0 ? (
             <div className="empty-state">
-              <p>Ask questions based on your indexed financial documents in <code>MyDocs</code>.</p>
+              <p>Upload a PDF document from the sidebar to start asking questions.</p>
             </div>
           ) : (
             messages.map((msg, idx) => (
@@ -116,7 +151,7 @@ function App() {
           )}
           {isQuerying && (
             <div className="message-bubble ai loading">
-              <p>SEC-Insight AI is retrieving document context and generating answer...</p>
+              <p>SEC-Insight AI is retrieving context and generating answer...</p>
             </div>
           )}
         </div>
@@ -124,7 +159,7 @@ function App() {
         <form className="input-form" onSubmit={handleSendQuery}>
           <input
             type="text"
-            placeholder="Ask a question about your indexed documents..."
+            placeholder="Ask a question about your uploaded document..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={isQuerying}
