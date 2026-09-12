@@ -1,208 +1,183 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import { createClient } from '@supabase/supabase-js';
+import pdfParse from 'pdf-parse';
+import { createClient } from '@supabase/supabase-sandbox-js'; // Or '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+// Setup __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-app.use(cors({ origin: '*' }));
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors());
 app.use(express.json());
 
-// Configure Multer for in-memory file handling
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+// Initialize Supabase Client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Initialize Supabase & Gemini Client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
-
+// Initialize Gemini Client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_SEC_INSIGHT);
 
-// Helper to sanitize text (strips invalid UTF-16 surrogates)
-function sanitizeText(text) {
-  return text.replace(/[\uD800-\uDFFF]/g, '');
-}
+// Multer memory storage setup for PDF uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Universal PDF Parser resolver handling pdf-parse
-async function parsePdfBuffer(buffer) {
-  const pdfModule = await import('pdf-parse');
-  const Target = pdfModule.PDFParse || pdfModule.default || pdfModule;
-
-  if (typeof Target === 'function' && Target.prototype && Target.prototype.constructor === Target) {
-    try {
-      const parser = new Target({ data: buffer });
-      const result = await parser.getText();
-      return result.text || '';
-    } catch {
-      const result = await Target(buffer);
-      return result.text || '';
-    }
-  } 
-
-  if (typeof Target === 'function') {
-    const result = await Target(buffer);
-    return result.text || '';
+// Helper: Split text into ~1000 character chunks
+function chunkText(text, chunkSize = 1000, overlap = 200) {
+  const chunks = [];
+  let index = 0;
+  while (index < text.length) {
+    const chunk = text.slice(index, index + chunkSize);
+    chunks.push(chunk);
+    index += chunkSize - overlap;
   }
-
-  throw new Error('Unable to resolve a valid pdf-parse constructor or function.');
+  return chunks;
 }
 
-// Helper for generating text embeddings using Gemini
-async function getEmbedding(text) {
-  const modelsToTry = ['gemini-embedding-001', 'text-embedding-004'];
-  
-  for (const modelName of modelsToTry) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.embedContent(text);
-      if (result && result.embedding && result.embedding.values) {
-        return result.embedding.values;
-      }
-    } catch (err) {
-      console.warn(`[Embedding Warning] Failed for '${modelName}':`, err.message);
-    }
-  }
-  throw new Error('All Gemini embedding model variants failed.');
-}
+// ----------------------------------------------------
+// ROUTES
+// ----------------------------------------------------
 
-// Model Fallback Resolver using active generation models suggested by the API
-async function generateGeminiContent(promptText) {
-  const models = [
-    'gemini-3.6-flash',
-    'gemini-3.1-pro-preview'
-  ];
+// 1. Serve index.html web interface at the root URL
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-  for (const modelName of models) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(promptText);
-      return result.response.text();
-    } catch (err) {
-      console.warn(`[Generation Warning] Model ${modelName} failed: ${err.message}`);
-    }
-  }
-  throw new Error('All Gemini model fallbacks failed.');
-}
+// 2. Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'SEC-Insight AI RAG API is live 🚀' });
+});
 
-// Endpoint 1: Dynamic PDF Upload & Vector Ingestion per Session
+// 3. Upload & Index PDF Document
 app.post('/upload-and-index', upload.single('document'), async (req, res) => {
   try {
-    const sessionId = req.body.sessionId;
-    if (!sessionId) {
-      return res.status(400).json({ error: 'sessionId is required.' });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file uploaded.' });
-    }
+    const { sessionId } = req.body;
+    const file = req.file;
 
-    // Safely extract PDF text
-    const cleanText = sanitizeText(await parsePdfBuffer(req.file.buffer));
-
-    if (!cleanText.trim()) {
-      return res.status(400).json({ error: 'Could not extract text from the PDF file.' });
+    if (!file || !sessionId) {
+      return res.status(400).json({ error: 'Both "document" PDF file and "sessionId" are required.' });
     }
 
-    // Chunking strategy (~1000 characters per chunk)
-    const chunkSize = 1000;
-    const chunks = [];
-    for (let i = 0; i < cleanText.length; i += chunkSize) {
-      chunks.push(cleanText.substring(i, i + chunkSize));
+    // Extract text from PDF buffer
+    const pdfData = await pdfParse(file.buffer);
+    const fullText = pdfData.text;
+
+    if (!fullText || fullText.trim().length === 0) {
+      return res.status(400).json({ error: 'Could not extract text from the provided PDF file.' });
     }
 
-    // Generate embeddings & store rows in 'documents' table
-    for (const chunk of chunks) {
-      if (!chunk.trim()) continue;
-      
-      const vector = await getEmbedding(chunk);
+    // Chunk text
+    const textChunks = chunkText(fullText);
+
+    // Get embedding model
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+
+    // Generate embeddings & store in Supabase
+    for (const chunk of textChunks) {
+      const result = await embeddingModel.embedContent(chunk);
+      const embedding = result.embedding.values;
 
       const { error } = await supabase.from('documents').insert({
         content: chunk,
-        embedding: vector,
-        metadata: { 
-          session_id: sessionId, 
-          filename: req.file.originalname 
+        embedding: embedding,
+        metadata: {
+          sessionId: sessionId,
+          filename: file.originalname
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase Insert Error:', error);
+        throw error;
+      }
     }
 
-    res.json({ 
-      message: `Successfully indexed "${req.file.originalname}" under session context.` 
+    res.json({
+      message: `Successfully indexed "${file.originalname}" under session context.`,
+      chunksIndexed: textChunks.length
     });
   } catch (error) {
-    console.error('Upload Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to process and index document.' });
+    console.error('Error during document indexing:', error);
+    res.status(500).json({ error: error.message || 'Failed to index document.' });
   }
 });
 
-// Endpoint 2: Session-Isolated Query RAG Engine
+// 4. Query RAG Endpoint
 app.post('/query', async (req, res) => {
   try {
     const { query, sessionId } = req.body;
+
     if (!query || !sessionId) {
-      return res.status(400).json({ error: 'Query and sessionId are required.' });
+      return res.status(400).json({ error: 'Both "query" and "sessionId" are required.' });
     }
 
-    const cleanQuery = sanitizeText(query);
+    // Generate embedding for user query
+    const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    const queryEmbedResult = await embeddingModel.embedContent(query);
+    const queryEmbedding = queryEmbedResult.embedding.values;
 
-    // Generate query embedding
-    const queryVector = await getEmbedding(cleanQuery);
-
-    // Retrieve matching vectors isolated by session_id metadata using RPC
-    const { data: matchedDocs, error } = await supabase.rpc('match_documents', {
-      query_embedding: queryVector,
-      match_threshold: 0.3,
+    // Vector search in Supabase
+    const { data: matchedDocs, error: matchError } = await supabase.rpc('match_documents', {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.25,
       match_count: 5,
-      filter_metadata: { session_id: sessionId }
+      filter_metadata: { sessionId: sessionId }
     });
 
-    let context = '';
-    if (error || !matchedDocs || matchedDocs.length === 0) {
-      const { data: fallbackDocs } = await supabase
-        .from('documents')
-        .select('content, metadata');
-      
-      const sessionDocs = (fallbackDocs || []).filter(
-        doc => doc.metadata && doc.metadata.session_id === sessionId
-      );
-      context = sessionDocs.map(d => d.content).join('\n---\n');
-    } else {
-      context = matchedDocs.map(d => d.content).join('\n---\n');
+    if (matchError) {
+      console.error('Supabase Search Error:', matchError);
+      throw matchError;
     }
 
-    if (!context.trim()) {
-      return res.json({ 
-        answer: "I couldn't find relevant information in your uploaded documents. Please upload a relevant PDF first." 
-      });
+    // Build context block
+    const contextText = matchedDocs && matchedDocs.length > 0
+      ? matchedDocs.map(doc => doc.content).join('\n---\n')
+      : 'No relevant context found in uploaded documents.';
+
+    // Primary Gemini generation model with fallback
+    let modelName = 'gemini-2.5-flash';
+    let model;
+
+    try {
+      model = genAI.getGenerativeModel({ model: modelName });
+    } catch {
+      modelName = 'gemini-1.5-flash';
+      model = genAI.getGenerativeModel({ model: modelName });
     }
 
-    const prompt = `You are SEC-Insight AI, an enterprise financial document assistant. Answer the user's question strictly using the provided context. If the answer is not contained in the context, state that clearly.
+    const prompt = `You are SEC-Insight AI, an expert assistant for analyzing documents.
+Answer the user's question using ONLY the provided document context below. If the answer cannot be determined from the context, state that clearly.
 
-Context:
-${context}
+Document Context:
+${contextText}
 
-Question: ${cleanQuery}
+User Question: ${query}
+`;
 
-Answer:`;
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
 
-    const answer = await generateGeminiContent(prompt);
-    res.json({ answer });
-
+    res.json({
+      answer: responseText,
+      sourcesMatched: matchedDocs ? matchedDocs.length : 0
+    });
   } catch (error) {
-    console.error('Query Error:', error);
+    console.error('Error handling query:', error);
     res.status(500).json({ error: error.message || 'Failed to process query.' });
   }
 });
 
-app.get('/', (req, res) => {
-  res.json({ message: 'SEC-Insight AI RAG API is live 🚀' });
+// Start Server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
