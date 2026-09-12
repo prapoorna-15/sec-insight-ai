@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PDFParse } from 'pdf-parse';
 
 dotenv.config();
@@ -16,21 +16,48 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 const DOCS_DIR = path.join(process.cwd(), 'MyDocs');
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY_SEC_INSIGHT || process.env.OPENAI_API_KEY,
-});
+// 1. Initialize Gemini Client using your specific env key variable
+const apiKey = process.env.GEMINI_API_KEY_SEC_INSIGHT || process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.error("❌ ERROR: GEMINI_API_KEY_SEC_INSIGHT is missing in .env");
+}
+const genAI = new GoogleGenerativeAI(apiKey);
 
-// Initialize Supabase client
+// 2. Initialize Supabase Client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
+// Helper function to remove invalid/unpaired UTF-16 Unicode surrogate characters
+const sanitizeText = (text) => {
+  if (!text) return '';
+  return text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/g, '');
+};
 
+// Fallback helper for vector embedding model options
+const getEmbedding = async (text) => {
+  const modelNames = ['text-embedding-004', 'gemini-embedding-001', 'embedding-001'];
+  
+  for (const modelName of modelNames) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.embedContent(text);
+      if (result && result.embedding && result.embedding.values) {
+        return result.embedding.values;
+      }
+    } catch (err) {
+      // Continue trying next candidate model if available
+    }
+  }
+  
+  throw new Error('All embedding models failed. Please verify API key permissions.');
+};
+
+// Chunk text into fixed sizes with overlap
 const chunkText = (text, chunkSize = 850, chunkOverlap = 150) => {
   const textChunks = [];
-  const cleanText = text.replace(/\s+/g, ' ').trim();
+  const cleanText = sanitizeText(text).replace(/\s+/g, ' ').trim();
 
   for (let i = 0; i < cleanText.length; i += chunkSize - chunkOverlap) {
     const chunk = cleanText.substring(i, i + chunkSize);
@@ -42,23 +69,20 @@ const chunkText = (text, chunkSize = 850, chunkOverlap = 150) => {
   return textChunks;
 };
 
-// Create embeddings for chunks and store in Supabase
+// Insert chunks into Supabase table
 const saveChunksAsEmbeddings = async (textChunks, metadata = {}) => {
-  const promises = textChunks.map(async (chunk) => {
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: chunk,
-    });
+  for (const chunk of textChunks) {
+    const embedding = await getEmbedding(chunk);
 
-    const embedding = embeddingResponse.data[0].embedding;
-
-    const { error } = await supabase.from('MyPDFDocuments').insert([
+    const { error } = await supabase.from('document_chunks').insert([
       {
         content: chunk,
         embedding: embedding,
-        title: metadata.title || null,
-        source: metadata.source || null,
-        path: metadata.path || null,
+        metadata: {
+          title: sanitizeText(metadata.title || ''),
+          source: metadata.source || null,
+          path: metadata.path || null,
+        },
       },
     ]);
 
@@ -66,12 +90,10 @@ const saveChunksAsEmbeddings = async (textChunks, metadata = {}) => {
       console.error('Error inserting document into Supabase:', error);
       throw error;
     }
-  });
-
-  await Promise.all(promises);
+  }
 };
 
-// --- Index Local Docs (PDFs in MyDocs folder) ---
+// --- Ingestion Logic ---
 const indexLocalDocs = async () => {
   if (!fs.existsSync(DOCS_DIR)) {
     throw new Error(`Docs folder not found: ${DOCS_DIR}`);
@@ -85,15 +107,13 @@ const indexLocalDocs = async () => {
     }
 
     const fullPath = path.join(DOCS_DIR, file);
-    // Day 2 Edit: Custom branded logging
     console.log(`⚡ SEC-Insight Ingestion: Parsing document vector stream for ${file}...`);
 
     const dataBuffer = fs.readFileSync(fullPath);
-
-    // Create PDFParse instance and parse
     const pdfParser = new PDFParse({ data: dataBuffer });
     const pdfData = await pdfParser.getText();
-    const text = (pdfData.text || '').trim();
+    const rawText = pdfData.text || '';
+    const text = sanitizeText(rawText).trim();
 
     if (!text) {
       console.warn(`No text extracted from ${file}, skipping.`);
@@ -110,83 +130,17 @@ const indexLocalDocs = async () => {
   }
 };
 
-// --- Endpoint to trigger indexing of local docs ---
+// --- API Routes ---
 app.post('/index-docs', async (req, res) => {
   try {
     await indexLocalDocs();
     res.status(200).json({ message: 'Indexed all PDFs from MyDocs folder into Supabase.' });
   } catch (error) {
     console.error('Error indexing local docs:', error);
-    console.error('Error details:', error.message);
-    console.error('Stack trace:', error.stack);
     res.status(500).json({ error: 'Failed to index local docs', details: error.message });
   }
 });
 
-// --- Query Processing Helper ---
-const processQuery = async (query) => {
-  const input = query.replace(/\n/g, ' ');
-
-  // 1. Embed the query
-  const embeddingResponse = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: [input],
-  });
-
-  const embedding = embeddingResponse.data[0].embedding;
-
-  // 2. Vector search in Supabase
-  const { data, error } = await supabase.rpc('match_documents', {
-    query_embedding: embedding,
-    match_threshold: 0.5,
-    match_count: 10,
-  });
-
-  if (error) {
-    console.error('Error querying Supabase:', error);
-    throw error;
-  }
-
-  console.log('Vector search results:', data?.length || 0, 'documents found');
-  if (data && data.length > 0) {
-    console.log('Top result similarity:', data[0].similarity);
-  }
-
-  // 3. Build context
-  let context = '';
-  data.forEach((row, idx) => {
-    context += `Chunk ${idx + 1}:\n${row.content.trim()}\n\n`;
-  });
-
-  if (!context) {
-    context = 'No relevant context found.';
-  }
-
-  console.log('Context length:', context.length);
-
-  // 4. Ask the model using the context (Day 2 Edit: Enterprise System Persona)
-  const messages = [
-    {
-      role: 'system',
-      content: `You are SEC-Insight AI, an enterprise financial and document intelligence assistant. Answer questions strictly based on the provided document context.`,
-    },
-    {
-      role: 'user',
-      content: `Context:\n${context}\n\nQuestion: ${query}\n\nAnswer clearly and concisely.`,
-    },
-  ];
-
-  const chatCompletion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: messages,
-    temperature: 0.2,
-    max_tokens: 500,
-  });
-
-  return chatCompletion.choices[0].message.content;
-};
-
-// --- Query Route ---
 app.post('/query', async (req, res) => {
   try {
     const { query } = req.body;
@@ -195,21 +149,73 @@ app.post('/query', async (req, res) => {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    const answer = await processQuery(query);
+    const cleanQuery = sanitizeText(query).replace(/\n/g, ' ');
+    const embedding = await getEmbedding(cleanQuery);
 
-    res.status(200).json({ answer });
+    const { data, error } = await supabase.rpc('match_documents', {
+      query_embedding: embedding,
+      match_threshold: 0.3,
+      match_count: 5,
+    });
+
+    if (error) throw error;
+
+    let context = (data || []).map((row, idx) => `Chunk ${idx + 1}:\n${row.content.trim()}`).join('\n\n');
+    if (!context) context = 'No relevant document context found.';
+
+    const prompt = `You are SEC-Insight AI, an enterprise financial and document intelligence assistant. Answer questions strictly based on the provided document context.
+
+Context:
+${context}
+
+Question: ${cleanQuery}
+
+Answer clearly and concisely.`;
+
+    // Updated candidate list covering versioned endpoints and stable aliases
+    const candidateModels = [
+      'gemini-1.5-flash-001',
+      'gemini-1.5-flash-002',
+      'gemini-1.5-pro-001',
+      'gemini-1.5-pro-002',
+      'gemini-3.7-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-pro'
+    ];
+
+    let responseText = null;
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const chatModel = genAI.getGenerativeModel({ model: modelName });
+        const result = await chatModel.generateContent(prompt);
+        responseText = result.response.text();
+        if (responseText) {
+          console.log(`Successfully generated response using model: ${modelName}`);
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Chat model ${modelName} failed (${err.message}), trying next candidate...`);
+      }
+    }
+
+    if (!responseText) {
+      throw lastError || new Error('Failed to generate response from all candidate Gemini models.');
+    }
+
+    res.status(200).json({ answer: responseText });
   } catch (error) {
     console.error('Error handling user query:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
 
-// --- Health Check Route ---
 app.get('/', (req, res) => {
   res.json({ message: 'SEC-Insight AI Engine API is running 🚀' });
 });
 
-// --- Start Server ---
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
