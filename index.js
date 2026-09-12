@@ -75,7 +75,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     // Chunk text
     const chunks = splitTextIntoChunks(fullText);
-    const embeddingModel = genAI.getGenerativeModel({ model: 'embedding-001' });
+    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
 
     // Store chunks and embeddings in Supabase
     for (let i = 0; i < chunks.length; i++) {
@@ -111,7 +111,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // Embed user question
-    const embeddingModel = genAI.getGenerativeModel({ model: 'embedding-001' });
+    const embeddingModel = genAI.getGenerativeModel({ model: 'models/text-embedding-004' });
     const questionEmbeddingResult = await embeddingModel.embedContent(question);
     const queryVector = questionEmbeddingResult.embedding.values;
 
