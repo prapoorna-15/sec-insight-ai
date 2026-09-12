@@ -22,8 +22,16 @@ const supabase = createClient(
 );
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// ADD THESE LINES:
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve static files directly from the root directory
+app.use(express.static(__dirname));
+
+// Route to serve index.html at the root URL
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Simple text splitter function
 function splitTextIntoChunks(text, chunkSize = 1000, overlap = 200) {
